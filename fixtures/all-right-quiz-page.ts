@@ -200,7 +200,6 @@ export class AllRightQuizPage {
 
     if (await this.isVisible(this.phoneInput)) {
       await this.fillPhone(this.phoneInput);
-      await this.page.pause();
       return;
     }
 
@@ -303,6 +302,15 @@ export class AllRightQuizPage {
    */
   private async typeInto(locator: Locator, text: string): Promise<void> {
     await this.safeClick(locator);
+    // `keyboard.type()` вставляє символи в позицію курсора, а не замінює вміст
+    // поля (на відміну від `.fill()`), тож сам по собі метод не ідемпотентний.
+    // Повторний виклик на тому самому полі — не гіпотетика: якщо крок не
+    // просунувся, `completeQuiz()` зробить ще до `STUCK_STEP_LIMIT` ітерацій
+    // поспіль, і кожна знову потрапить сюди. Без очищення друге значення
+    // дописалось би до першого ("john@ex.comjane@ex.com"), і поле гарантовано
+    // лишалося б невалідним — тобто ретрай не просто не допомагав би, а
+    // унеможливлював успіх.
+    await this.clearField(locator);
     await this.page.keyboard.type(text);
     // Деякі поля мають дебаунс-валідацію на подію `input`, яка не встигає
     // спрацювати до кліку одразу після вводу — коротка пауза імітує
@@ -310,6 +318,26 @@ export class AllRightQuizPage {
     // (Це підтверджена причина реального бага під час розробки — тут
     // навмисно консервативніше значення, ніж в інших паузах у цьому файлі.)
     await this.page.waitForTimeout(200);
+  }
+
+  /**
+   * @description Очистити текстове поле перед вводом. `.clear()` чекає на
+   * стабільність елемента і на кроках із фоновим відео може не встигнути
+   * (та сама причина, що описана в `safeClick()`), тому результат
+   * перевіряється за фактичним значенням поля, а не за відсутністю винятку —
+   * мовчазна невдача тут повернула б рівно ту проблему, заради якої метод і
+   * існує. Запасний шлях — посимвольне стирання: воно працює з уже
+   * сфокусованим полем і не потребує перевірок дієздатності.
+   */
+  private async clearField(locator: Locator): Promise<void> {
+    await locator.clear({ timeout: 2000 }).catch(() => {});
+    const remaining: string = await locator.inputValue().catch(() => '');
+    if (!remaining) return;
+
+    await locator.press('End').catch(() => {});
+    for (let i = 0; i < remaining.length; i++) {
+      await locator.press('Backspace').catch(() => {});
+    }
   }
 
   /**
