@@ -1,0 +1,8 @@
+.idea
+.claude
+.playwright
+.playwright-cli
+docs
+node_modules
+playwright-report
+test-results
